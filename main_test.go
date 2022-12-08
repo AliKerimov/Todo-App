@@ -60,7 +60,6 @@ func test(count int) {
 		req, err := http.NewRequest("POST", posturl, bytes.NewBuffer(body))
 		if err != nil {
 			panic(err)
-			//return
 		}
 		//client := &http.Client{}
 		//res, err := client.Do(req)
@@ -72,6 +71,5 @@ func test(count int) {
 			panic(err)
 		}
 		fmt.Println(res)
-		//log.Fatal(res)
 	}
 }
