@@ -22,6 +22,7 @@ import (
 )
 
 var DB *pgxpool.Pool
+
 // var TELEGRAM="https://api.telegram.org/bot$code/sendMessage"
 type Todos struct {
 	Content   string `json:"content"`
@@ -72,9 +73,9 @@ func checkForMessages() {
 		case <-ticker.C:
 			//1048346950
 			type Todo struct {
-				Remind_at   time.Time `json:"remind_at"`
-				Is_reminded bool      `json:"is_reminded"`
-				User_id     int       `json:"user_id"`
+				// Remind_at   time.Time `json:"remind_at"`
+				// Is_reminded bool      `json:"is_reminded"`
+				User_id int `json:"user_id"`
 			}
 			type User struct {
 				Id                 int    `json:"id"`
@@ -83,21 +84,22 @@ func checkForMessages() {
 			}
 			var p Todo
 			var u User
-			r, err := DB.Query(context.Background(), "select remind_at,is_reminded,user_id from todo")
+			r, err := DB.Query(context.Background(), "select user_id from todo where remind_at<=Now() and is_reminded=true")
 			if err != nil {
-				panic(err)
+				fmt.Println(err.Error())
+				return
 			}
 			defer r.Close()
 			for r.Next() {
-				err := r.Scan(&p.Remind_at, &p.Is_reminded, &p.User_id)
+				err := r.Scan(&p.User_id)
 				if err != nil {
-					panic(err)
+					fmt.Println(err.Error())
+					return
 				}
 				rows, err := DB.Query(context.Background(), "select id,telegram_bot_token,telegram_chat_id from users")
 				if err != nil {
 					fmt.Println(err.Error())
 					return
-					// panic(err)
 				}
 				defer rows.Close()
 				for rows.Next() {
@@ -107,34 +109,29 @@ func checkForMessages() {
 						return
 					}
 					if p.User_id == u.Id {
-						if p.Is_reminded {
-							currentTime := time.Now()
-							oldTime := p.Remind_at
-							diff := currentTime.Sub(oldTime)
-							fmt.Printf("Seconds: %f\n", diff.Seconds())
-							if diff.Seconds() == 0 {
-								i, err := strconv.ParseInt(u.Telegram_chat_id, 10, 64)
-								if err != nil {
-									fmt.Println(err.Error())
-									return
-								}
-								message := Message{ChatID: i, Text: "salam"}
-								response := "https://api.telegram.org/bot" + u.Telegram_bot_token + "/sendMessage"
-								// response := fmt.Sprintf("https://api.telegram.org/bot%d/sendMessage", u.Telegram_bot_token)
-								SendMessage(response, &message)
-							}
-
+						i, err := strconv.ParseInt(u.Telegram_chat_id, 10, 64)
+						if err != nil {
+							fmt.Println(err.Error())
+							return
 						}
+						fmt.Println("h")
+						message := Message{ChatID: i, Text: "salam"}
+						response := "https://api.telegram.org/bot" + u.Telegram_bot_token + "/sendMessage"
+						// response := fmt.Sprintf("https://api.telegram.org/bot%d/sendMessage", u.Telegram_bot_token)
+						SendMessage(response, &message)
+
 					}
 				}
 				err = rows.Err()
 				if err != nil {
-					panic(err)
+					fmt.Println(err.Error())
+					return
 				}
 			}
 			err = r.Err()
 			if err != nil {
-				panic(err)
+				fmt.Println(err.Error())
+				return
 			}
 		case <-quit:
 			ticker.Stop()
