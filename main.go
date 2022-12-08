@@ -57,7 +57,7 @@ func main() {
 	router.HandleFunc("/todos/edit", updateTodo).Methods("PATCH")
 	// serve the app
 	go checkForMessages()
-	fmt.Scanln()
+	// fmt.Scanln()
 	fmt.Println("Server at 8080")
 	log.Fatal(http.ListenAndServe(":8000", router))
 
@@ -122,7 +122,6 @@ func checkForMessages() {
 								response := "https://api.telegram.org/bot" + u.Telegram_bot_token + "/sendMessage"
 								// response := fmt.Sprintf("https://api.telegram.org/bot%d/sendMessage", u.Telegram_bot_token)
 								SendMessage(response, &message)
-								return
 							}
 
 						}
