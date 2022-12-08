@@ -58,7 +58,6 @@ func main() {
 	router.HandleFunc("/todos/edit", updateTodo).Methods("PATCH")
 	// serve the app
 	go checkForMessages()
-	// fmt.Scanln()
 	fmt.Println("Server at 8080")
 	log.Fatal(http.ListenAndServe(":8000", router))
 
@@ -73,9 +72,8 @@ func checkForMessages() {
 		case <-ticker.C:
 			//1048346950
 			type Todo struct {
-				// Remind_at   time.Time `json:"remind_at"`
-				// Is_reminded bool      `json:"is_reminded"`
-				User_id int `json:"user_id"`
+				Content string `json:"content"`
+				User_id int    `json:"user_id"`
 			}
 			type User struct {
 				Id                 int    `json:"id"`
@@ -84,19 +82,19 @@ func checkForMessages() {
 			}
 			var p Todo
 			var u User
-			r, err := DB.Query(context.Background(), "select user_id from todo where remind_at<=Now() and is_reminded=true")
+			r, err := DB.Query(context.Background(), "select user_id,content from todo where remind_at<=Now() and is_reminded=false")
 			if err != nil {
 				fmt.Println(err.Error())
 				return
 			}
 			defer r.Close()
 			for r.Next() {
-				err := r.Scan(&p.User_id)
+				err := r.Scan(&p.User_id, &p.Content)
 				if err != nil {
 					fmt.Println(err.Error())
 					return
 				}
-				rows, err := DB.Query(context.Background(), "select id,telegram_bot_token,telegram_chat_id from users")
+				rows, err := DB.Query(context.Background(), "select id,telegram_bot_token,telegram_chat_id from users where id=$1", p.User_id)
 				if err != nil {
 					fmt.Println(err.Error())
 					return
@@ -108,31 +106,25 @@ func checkForMessages() {
 						fmt.Println(err.Error())
 						return
 					}
-					if p.User_id == u.Id {
-						i, err := strconv.ParseInt(u.Telegram_chat_id, 10, 64)
-						if err != nil {
-							fmt.Println(err.Error())
-							return
-						}
-						fmt.Println("h")
-						message := Message{ChatID: i, Text: "salam"}
-						response := "https://api.telegram.org/bot" + u.Telegram_bot_token + "/sendMessage"
-						// response := fmt.Sprintf("https://api.telegram.org/bot%d/sendMessage", u.Telegram_bot_token)
-						SendMessage(response, &message)
-
+					i, err := strconv.ParseInt(u.Telegram_chat_id, 10, 64)
+					if err != nil {
+						fmt.Println(err.Error())
+						return
 					}
-				}
-				err = rows.Err()
-				if err != nil {
-					fmt.Println(err.Error())
-					return
+					fmt.Println("h")
+					message := Message{ChatID: i, Text: p.Content}
+					response := "https://api.telegram.org/bot" + u.Telegram_bot_token + "/sendMessage"
+					// response := fmt.Sprintf("https://api.telegram.org/bot%d/sendMessage", u.Telegram_bot_token)
+					SendMessage(response, &message)
+					_, err = DB.Exec(context.Background(), "UPDATE todo SET  is_reminded = true WHERE user_id=$1 ", p.User_id)
+					if err != nil {
+						log.Fatal(err)
+						return
+					}
+
 				}
 			}
-			err = r.Err()
-			if err != nil {
-				fmt.Println(err.Error())
-				return
-			}
+
 		case <-quit:
 			ticker.Stop()
 			return
