@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
 
 	"github.com/gorilla/mux"
-	"github.com/jackc/pgx/v4"
 	"github.com/joho/godotenv"
 
 	// "github.com/jackc/pgx//pgxpool"
@@ -19,13 +21,14 @@ import (
 	_ "github.com/lib/pq"
 )
 
-var DB *pgx.Conn
+var DB *pgxpool.Pool
+
+//var tx *sql.Tx
 
 type Todos struct {
-	Content string `json:"content"`
-	// id        string
-	Completed bool `json:"completed"`
-	User_id   int  `json:"user_id"`
+	Content   string `json:"content"`
+	Completed bool   `json:"completed"`
+	User_id   int    `json:"user_id"`
 }
 
 func main() {
@@ -57,7 +60,14 @@ func main() {
 
 }
 func initDb() (err error) {
-	DB, err = pgx.Connect(context.Background(), os.Getenv("DATABASE_URL"))
+	conf, err := pgxpool.ParseConfig(os.Getenv("DATABASE_URL"))
+	if err != nil {
+		return
+	}
+
+	conf.MaxConns = 5
+
+	DB, err = pgxpool.ConnectConfig(context.Background(), conf)
 	return err
 }
 
@@ -107,39 +117,74 @@ func createTodo(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	tx, err := DB.BeginTx(context.Background(), pgx.TxOptions{
+		IsoLevel:   pgx.Serializable,
+		AccessMode: pgx.ReadWrite,
+	})
+	//fmt.Println(tx)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		//fmt.Printf(err)
+		return
+	}
 
 	var lim int
 	str := "select lim from users where id = $1"
-	er := DB.QueryRow(context.Background(), str, p.User_id).Scan(&lim)
-	if er != nil {
-		http.Error(w, http.StatusText(404), 404)
+	er := tx.QueryRow(context.Background(), str, p.User_id).Scan(&lim)
+	if er != nil && err != sql.ErrNoRows {
+		//tx.Rollback(context.Background())
+		fmt.Println(er.Error())
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	//fmt.Println("skjskj")
+
 	var count int
 	coun := "select count(0) from todo where user_id = $1"
-	er = DB.QueryRow(context.Background(), coun, p.User_id).Scan(&count)
+	er = tx.QueryRow(context.Background(), coun, p.User_id).Scan(&count)
 	if er != nil {
-		http.Error(w, http.StatusText(404), 404)
+		//tx.Rollback(context.Background())
+		fmt.Println(er.Error())
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	if lim > count {
-		lastInsertId := 0
+		var lastInsertId int
+		coun := "select count(0) from todo"
+		er = tx.QueryRow(context.Background(), coun).Scan(&lastInsertId)
+		if er != nil {
+			fmt.Println(er.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 		// s, err := DB.Exec(context.Background(), "INSERT INTO todo (content,user_id) VALUES($1, $2)", p.Content, p.User_id)
-		err = DB.QueryRow(context.Background(), "INSERT INTO todo (content,user_id) VALUES($1, $2) RETURNING id", p.Content, p.User_id).Scan(&lastInsertId)
+		res, err := tx.Exec(context.Background(), "INSERT INTO todo (content,user_id) VALUES($1, $2) RETURNING id", p.Content, p.User_id)
 		if err != nil {
-			http.Error(w, http.StatusText(500), 500)
+			//tx.Rollback(context.Background())
+			fmt.Println(err.Error())
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		fmt.Println(res)
+		err = tx.Commit(context.Background())
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Println(err.Error())
 			return
 		}
 		type Id struct {
 			Id int `json:"id"`
 		}
-		resp := Id{lastInsertId}
+		//lastInsertId = lastInsertId + 1
+		resp := Id{lastInsertId + 1}
+		//resp := 2
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
 	w.WriteHeader(http.StatusInternalServerError)
 	w.Write([]byte("500 - Limit exceeded!"))
+	fmt.Println("Limit kecildi")
 }
 func updateTodo(w http.ResponseWriter, r *http.Request) {
 	type Todo struct {
@@ -180,7 +225,7 @@ func deleteTodo(w http.ResponseWriter, r *http.Request) {
 	}
 	// l:=p.Id
 	str := "DELETE FROM todo WHERE id = $1"
-	_,err = DB.Exec(context.Background(), str, p.Id)
+	_, err = DB.Exec(context.Background(), str, p.Id)
 	if err != nil {
 		http.Error(w, http.StatusText(404), 404)
 		return
