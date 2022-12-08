@@ -8,6 +8,9 @@
 -- ADD COLUMN telegram_bot_token   text
 
 
+--  select * from users
+-- select * from todo
+
 -- INSERT INTO users (name,lim,telegram_chat_id,telegram_bot_token) VALUES ('Ali',1000,'1048346950','5596315438:AAHHHkxalUMl20KFEFZs-3lXNM4jMwn4MKs')
 -- INSERT INTO todo (user_id,content,remind_at,is_reminded) VALUES (1,'hi',current_timestamp,true)
 -- CREATE TABLE todo(
